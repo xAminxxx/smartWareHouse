@@ -1,0 +1,12 @@
+chromadb
+sentence-transformers
+pydantic
+python-dotenv
+google-generativeai
+fastapi
+uvicorn
+ultralytics
+opencv-python
+python-multipart
+mysql-connector-python
+ollama
