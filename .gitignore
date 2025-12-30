@@ -3,21 +3,38 @@ __pycache__/
 *.py[cod]
 *$py.class
 .env
+.venv
 venv/
 ENV/
+*.ipynb_checkpoints/
+
+# System-specific
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Large Files & Models
+ollama
+*.pt
+*.pdf
+*.log
 
 # Databases
 *.db
 warehouse_db/
+smart_warehouse .sql
 
-# Node / Next.js
+# Frontend (Node / Next.js)
 node_modules/
-frontend/.next/
 frontend/node_modules/
-out/
-build/
+frontend/.next/
+frontend/.env*
+frontend/out/
+frontend/build/
+frontend/.vercel
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
 
-# IDEs
-.vscode/
-.idea/
-.DS_Store
+# Testing
+frontend/coverage/

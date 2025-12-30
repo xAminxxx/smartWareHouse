@@ -1,16 +1,23 @@
-import ollama
+import google.generativeai as genai
 from typing import Dict, Any
 from src.rag_engine import WarehouseRAGEngine
+import os
 
 class WarehouseAgent:
     def __init__(self, api_key: str = None):
-        # We don't need the Gemini API key anymore for the Agent
-        self.model_name = 'llama3' # Or 'llama2:13b' if installed
+        self.api_key = api_key
+        # self.model_name = 'llama3' # Or 'llama2:13b' if installed (Commented out for Llama3)
         self.rag = WarehouseRAGEngine()
+        
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel('gemini-2.0-flash') 
+        else:
+            self.model = None
 
     def reason(self, vehicle_data: Dict[str, Any]) -> str:
         """
-        Calculates a decision using local Llama 3.
+        Calculates a decision using Gemini API (was Llama 3).
         """
         from src.database import get_complete_arrival_info
         
@@ -28,20 +35,28 @@ class WarehouseAgent:
         context_text = "\n---\n".join(context_chunks)
 
         prompt = f"""
-        [INST] You are the Warehouse Intelligence Agent.
+        You are the Warehouse Intelligence Agent.
         Decide the course of action for this arrival.
         
         FACTS: {facts_text}
         RULES: {context_text}
         VEHICLE: {plate} at {vehicle_data.get('time')}
         
-        Assign a Gate and Priority. [/INST]
+        Mandatory: Respond ONLY with a JSON object.
+        Template:
+        {{
+            "analysis": "Explanation of your decision",
+            "gate": "A-01 to A-05",
+            "priority": "LOW | MEDIUM | HIGH | CRITICAL",
+            "action": "UNLOADING | LOADING | HOLD | REJECT"
+        }}
         """
 
-        response = ollama.chat(model=self.model_name, messages=[
-            {'role': 'user', 'content': prompt}
-        ])
-        return response['message']['content']
+        if self.model:
+            response = self.model.generate_content(prompt)
+            return response.text
+        else:
+            return '{"analysis": "Error: Gemini API not configured", "gate": "N/A", "priority": "N/A", "action": "HOLD"}'
 
 if __name__ == "__main__":
     # Example usage (requires GEMINI_API_KEY in .env)

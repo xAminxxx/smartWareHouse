@@ -72,6 +72,27 @@ def init_db():
         FOREIGN KEY (idDepot) REFERENCES depot(idDepot)
     )
     """)
+    
+    # --- CHAT SYSTEM ---
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS chat_session (
+        idSession INT AUTO_INCREMENT PRIMARY KEY,
+        idUser INT,
+        title VARCHAR(255),
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (idUser) REFERENCES user(idUser)
+    )
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS chat_message (
+        idMessage INT AUTO_INCREMENT PRIMARY KEY,
+        idSession INT,
+        role ENUM('user', 'ai'),
+        content TEXT,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (idSession) REFERENCES chat_session(idSession)
+    )
+    """)
 
     # --- MASSIVE DATA SEEDING (FROM DUMP) ---
     
@@ -213,10 +234,33 @@ def list_clients():
 def list_products():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT nom, Quantite, prix FROM produit")
-    products = [{"name": row[0], "stock": row[1], "price": float(row[2])} for row in cursor.fetchall()]
+    cursor.execute("SELECT idProduit, nom, Quantite, prix FROM produit")
+    products = [{"id": row[0], "name": row[1], "stock": row[2], "price": float(row[3])} for row in cursor.fetchall()]
     conn.close()
     return products
+
+def add_product(name: str, quantity: int, price: float):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    new_id = int(datetime.datetime.now().timestamp()) % 100000
+    cursor.execute("INSERT INTO produit (idProduit, nom, Quantite, prix) VALUES (%s, %s, %s, %s)", (new_id, name, quantity, price))
+    conn.commit()
+    conn.close()
+    return new_id
+
+def update_product(idProduit: int, name: str, quantity: int, price: float):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE produit SET nom = %s, Quantite = %s, prix = %s WHERE idProduit = %s", (name, quantity, price, idProduit))
+    conn.commit()
+    conn.close()
+
+def delete_product(idProduit: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM produit WHERE idProduit = %s", (idProduit,))
+    conn.commit()
+    conn.close()
 
 def create_new_client(name: str):
     conn = get_db_connection()
@@ -235,8 +279,60 @@ def create_new_client(name: str):
     except Exception as e:
         print(f"❌ DB Error: {e}")
         return None
-    finally:
-        conn.close()
+def save_chat_message(session_id: int, role: str, content: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO chat_message (idSession, role, content) VALUES (%s, %s, %s)", (session_id, role, content))
+    conn.commit()
+    conn.close()
+
+def get_chat_sessions(idUser: int):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM chat_session WHERE idUser = %s ORDER BY createdAt DESC", (idUser,))
+    sessions = cursor.fetchall()
+    conn.close()
+    return sessions
+
+def get_chat_messages(session_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT role, content, timestamp FROM chat_message WHERE idSession = %s ORDER BY timestamp ASC", (session_id,))
+    messages = cursor.fetchall()
+    conn.close()
+    return messages
+
+def create_chat_session(idUser: int, title: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO chat_session (idUser, title) VALUES (%s, %s)", (idUser, title))
+    session_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return session_id
+
+def get_user_by_email(email: str):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT idUser, email, motpass FROM user WHERE email = %s", (email,))
+    user = cursor.fetchone()
+    conn.close()
+    return user
+
+def update_password(user_id: int, new_password: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE user SET motpass = %s WHERE idUser = %s", (new_password, user_id))
+    conn.commit()
+    conn.close()
+
+def delete_user(user_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Note: Dependent rows in client etc might need deletion or cascading
+    cursor.execute("DELETE FROM user WHERE idUser = %s", (user_id,))
+    conn.commit()
+    conn.close()
 
 if __name__ == "__main__":
     init_db()
