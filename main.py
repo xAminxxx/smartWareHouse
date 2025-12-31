@@ -100,31 +100,36 @@ async def chatbot_order(data: dict):
         # 0. Get Warehouse Context & History
         from src.database import (
             list_clients, list_products, create_new_order, create_new_client,
-            save_chat_message, get_chat_messages, create_chat_session
+            save_chat_message, get_chat_messages, create_chat_session,
+            get_complete_arrival_info
         )
         
         available_clients = list_clients()
         available_products = list_products()
         
+        detected_plate = data.get("detected_plate")
+        order_info = None
+        if detected_plate:
+            order_info = get_complete_arrival_info(detected_plate)
+
         context_summary = f"""
         Available Clients: {', '.join(available_clients)}
         Available Products: {', '.join([p['name'] for p in available_products])}
+        Detected Plate at Gate: {detected_plate or 'None'}
+        Active Order For This Plate: {order_info if order_info else 'No active order found for this specific plate'}
         """
         
         # Determine Session
-        user_id = data.get("user_id") # We need this from frontend now
+        user_id = data.get("user_id") 
         real_session_id = data.get("session_id")
         
         if not real_session_id:
-            # Create a new session if none exists
             title = user_message[:30] + "..." if len(user_message) > 30 else user_message
-            real_session_id = create_chat_session(user_id or 1, title) # Fallback to user 1 for demo
+            real_session_id = create_chat_session(user_id or 1, title) 
             
-        # Get history from DB
         history_msgs = get_chat_messages(real_session_id)
         history_text = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in history_msgs[-6:]])
 
-        # 1. Ask Gemini (was Llama 3) to act as a conversational receptionist
         receptionist_prompt = f"""
         You are the SmartWarehouse Assistant. 
         Context: {context_summary}
@@ -137,14 +142,16 @@ async def chatbot_order(data: dict):
         IMPORTANT: Respond ONLY with a JSON object.
         Tasks:
         1. Respond politely. 
-        2. If you see a name and it's NOT in the clients list, suggest registering.
-        3. If you have all info (client + product + qty), set intent to "order".
+        2. If a vehicle is detected at the gate (see Plate in Context), and the user asks about it, check the "Active Order For This Plate" in context. If found, confirm details (Client, Product, Quantity) and ask if they are ready for pickup.
+        3. If no order is found for the detected plate, inform the user and ask if they want to create a new order or if it's a different client.
+        4. To pass a NEW order, you MUST have: Client Name, Product Name, Quantity (number), AND the Plate Number.
+        5. If ALL info (client + product + quantity + plate) is present for a NEW order, set intent to "order".
         
         Output format:
         {{
             "response": "Your reply",
             "intent": "order" | "register" | "chat",
-            "details": {{ "client": "name", "product": "name", "quantity": int, "new_client_name": "name" }}
+            "details": {{ "client": "name", "product": "name", "quantity": int, "plate": "string" }}
         }}
         """
         
@@ -154,15 +161,15 @@ async def chatbot_order(data: dict):
         # ])
         # res_text = ai_response['message']['content']
 
-        # Using Gemini 2.0 Flash
+        # Using Gemini 1.5 Flash (via 'latest' alias)
         import google.generativeai as genai
         try:
-            gemini_chat_model = genai.GenerativeModel('gemini-2.0-flash')
+            gemini_chat_model = genai.GenerativeModel('models/gemini-2.5-flash')
             response = gemini_chat_model.generate_content(receptionist_prompt)
             res_text = response.text
         except Exception as e:
             if "429" in str(e):
-                return {"status": "error", "message": "Désolé, le quota gratuit de l'IA (Gemini) est épuisé pour aujourd'hui. Veuillez réessayer dans quelques heures."}
+                return {"status": "error", "message": "Désolé, le quota gratuit de l'IA (Gemini Flash) est saturé. Veuillez patienter une minute."}
             raise e
         
         import json, re
@@ -183,7 +190,7 @@ async def chatbot_order(data: dict):
 
         if intent == "order" and decision.get("details"):
             det = decision["details"]
-            order_id = create_new_order(det.get('client'), det.get('product'), det.get('quantity'))
+            order_id = create_new_order(det.get('client'), det.get('product'), det.get('quantity'), det.get('plate'))
             if order_id: return {"status": "success", "message": f"{decision['response']} (Commande #{order_id} active)", "session_id": real_session_id}
             else: return {"status": "warning", "message": f"{decision['response']} (Erreur: Client ou Produit non trouvé)", "session_id": real_session_id}
 

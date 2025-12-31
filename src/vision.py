@@ -11,7 +11,7 @@ class VisionPipeline:
         self.yolo_model = YOLO(model_path)
         genai.configure(api_key=api_key)
         # Using the latest flash model as confirmed working
-        self.gemini_model = genai.GenerativeModel('gemini-2.0-flash')
+        self.gemini_model = genai.GenerativeModel('models/gemini-2.5-flash')
 
     def extract_plate_number(self, image_bytes: bytes) -> str:
         # Convert bytes to numpy array

@@ -97,7 +97,10 @@ export default function AdminDashboard() {
       const res = await fetch("http://localhost:8000/chatbot-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg }),
+        body: JSON.stringify({ 
+          message: userMsg,
+          detected_plate: visionResult?.plate 
+        }),
       });
       const data = await res.json();
       setChatLog(prev => [...prev, { role: "ai", text: data.message }]);

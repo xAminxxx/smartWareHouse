@@ -11,7 +11,7 @@ class WarehouseAgent:
         
         if self.api_key:
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-2.0-flash') 
+            self.model = genai.GenerativeModel('models/gemini-2.5-flash')
         else:
             self.model = None
 
@@ -28,7 +28,7 @@ class WarehouseAgent:
         
         if facts:
             client_name = facts['client_nom']
-            facts_text = f"Camion {facts['camion_type']} pour le client {client_name}. Produit: {facts['produit_nom']}. Statut: {facts['commande_statut']}."
+            facts_text = f"Véhicule {facts.get('plaque_vehicule', plate)} pour le client {client_name}. Produit: {facts['produit_nom']}. Statut: {facts['commande_statut']}."
 
         search_query = f"Consignes pour le client {client_name}"
         context_chunks = self.rag.query(search_query, n_results=5)

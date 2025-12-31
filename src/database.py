@@ -7,7 +7,8 @@ load_dotenv()
 
 def get_db_connection():
     return mysql.connector.connect(
-        host=os.getenv("DB_HOST", "localhost"),
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        port=int(os.getenv("DB_PORT", 3306)),
         user=os.getenv("DB_USER", "root"),
         password=os.getenv("DB_PASSWORD", ""),
         database=os.getenv("DB_NAME", "smart_warehouse"),
@@ -16,7 +17,8 @@ def get_db_connection():
 
 def init_db():
     temp_conn = mysql.connector.connect(
-        host=os.getenv("DB_HOST", "localhost"),
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        port=int(os.getenv("DB_PORT", 3306)),
         user=os.getenv("DB_USER", "root"),
         password=os.getenv("DB_PASSWORD", "")
     )
@@ -67,6 +69,7 @@ def init_db():
         idDepot INT,
         dateCommande DATE,
         statut VARCHAR(30),
+        plaque_vehicule VARCHAR(20),
         FOREIGN KEY (idClient) REFERENCES client(idClient),
         FOREIGN KEY (idProduit) REFERENCES produit(idProduit),
         FOREIGN KEY (idDepot) REFERENCES depot(idDepot)
@@ -161,20 +164,24 @@ def init_db():
 def get_complete_arrival_info(plaque: str):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+    # Search for an active order that matches this plate directly or via client's registered camelion
     query = """
-    SELECT com.idCommande, cam.type as camion_type, cl.nom as client_nom, cl.telephone, 
+    SELECT com.idCommande, cl.nom as client_nom, cl.telephone, 
            com.statut as commande_statut, com.dateCommande,
            p.nom as produit_nom, p.Quantite as stock_disponible,
-           d.nom as depot_nom
-    FROM camion cam
-    JOIN client cl ON cam.idClient = cl.idClient
-    LEFT JOIN commande com ON cl.idClient = com.idClient
-    LEFT JOIN produit p ON com.idProduit = p.idProduit
-    LEFT JOIN depot d ON com.idDepot = d.idDepot
-    WHERE cam.plaque = %s OR cam.plaque LIKE %s
+           d.nom as depot_nom, com.plaque_vehicule
+    FROM commande com
+    JOIN client cl ON com.idClient = cl.idClient
+    JOIN produit p ON com.idProduit = p.idProduit
+    JOIN depot d ON com.idDepot = d.idDepot
+    LEFT JOIN camion cam ON cl.idClient = cam.idClient
+    WHERE com.plaque_vehicule = %s 
+       OR com.plaque_vehicule LIKE %s
+       OR cam.plaque = %s
+    ORDER BY com.dateCommande DESC
     LIMIT 1
     """
-    cursor.execute(query, (plaque, f"%{plaque}%"))
+    cursor.execute(query, (plaque, f"%{plaque}%", plaque))
     result = cursor.fetchone()
     conn.close()
     return result
@@ -198,7 +205,7 @@ def update_stock(idProduit: int, quantity_change: int):
     conn.close()
     print(f"📦 Stock Produit #{idProduit} mis à jour (Variation: {quantity_change})")
 
-def create_new_order(client_name: str, product_name: str, quantity: int):
+def create_new_order(client_name: str, product_name: str, quantity: int, plate: str = None):
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -215,9 +222,9 @@ def create_new_order(client_name: str, product_name: str, quantity: int):
     # 3. Create Order
     new_id = int(datetime.datetime.now().timestamp()) # Simple unique ID for demo
     cursor.execute("""
-        INSERT INTO commande (idCommande, idClient, idProduit, idDepot, dateCommande, statut)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """, (new_id, client[0], product[0], 5, datetime.date.today(), 'en attente'))
+        INSERT INTO commande (idCommande, idClient, idProduit, idDepot, dateCommande, statut, plaque_vehicule)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (new_id, client[0], product[0], 5, datetime.date.today(), 'en attente', plate))
     
     conn.commit()
     conn.close()
