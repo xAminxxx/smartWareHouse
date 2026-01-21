@@ -23,32 +23,42 @@ class WarehouseAgent:
         
         plate = vehicle_data.get('plate')
         facts = get_complete_arrival_info(plate)
-        facts_text = "Aucune commande active trouvée pour cette plaque."
-        client_name = "Inconnu"
+        facts_text = "No active pickup order found for this plate. Action: HOLD for manual verification."
+        client_name = "Unknown"
         
         if facts:
             client_name = facts['client_nom']
-            facts_text = f"Véhicule {facts.get('plaque_vehicule', plate)} pour le client {client_name}. Produit: {facts['produit_nom']}. Statut: {facts['commande_statut']}."
+            status = facts['commande_statut']
+            if status == 'awaiting_pickup':
+                facts_text = f"Vehicle {facts.get('plaque_vehicule', plate)} for client {client_name}. Product: {facts['produit_nom']}. Status: AWAITING_PICKUP - Ready for collection."
+            elif status == 'picked_up':
+                facts_text = f"Vehicle {facts.get('plaque_vehicule', plate)} for client {client_name}. Status: ALREADY PICKED UP - Order was already collected."
+            else:
+                facts_text = f"Vehicle {facts.get('plaque_vehicule', plate)} for client {client_name}. Status: {status}."
 
         search_query = f"Consignes pour le client {client_name}"
         context_chunks = self.rag.query(search_query, n_results=5)
         context_text = "\n---\n".join(context_chunks)
 
         prompt = f"""
-        You are the Warehouse Intelligence Agent.
-        Decide the course of action for this arrival.
+        You are the Warehouse Intelligence Agent for a PICKUP-ONLY warehouse.
+        Clients arrive to collect their pre-ordered goods.
         
         FACTS: {facts_text}
         RULES: {context_text}
         VEHICLE: {plate} at {vehicle_data.get('time')}
         
+        Status meanings:
+        - awaiting_pickup: Order is ready, client can proceed to gate for pickup
+        - picked_up: Order already collected
+        
         Mandatory: Respond ONLY with a JSON object.
         Template:
         {{
             "analysis": "Explanation of your decision",
-            "gate": "A-01 to A-05",
+            "gate": "D-01 to E-05",
             "priority": "LOW | MEDIUM | HIGH | CRITICAL",
-            "action": "UNLOADING | LOADING | HOLD | REJECT"
+            "action": "PICKUP | HOLD | REJECT"
         }}
         """
 

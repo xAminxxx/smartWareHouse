@@ -24,61 +24,62 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    // Simulation d'authentification (à remplacer par un vrai appel API si disponible)
-    setTimeout(() => {
-      if (email === "admin@smart.com" && password === "admin") {
+    try {
+      const response = await fetch("http://localhost:8000/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.status === "success") {
         const user: AuthUser = {
-          id: "1",
-          email: "admin@smart.com",
-          fullName: "Admin Principal",
-          company: "SmartWarehouse Ltd",
-          role: "admin",
+          id: String(data.user.id),
+          email: data.user.email,
+          fullName: data.user.fullName,
+          company: data.user.company,
+          role: data.user.role as "admin" | "client",
         };
         setAuth(user);
-        router.push("/admin");
-      } else if (email === "client@test.com" && password === "client") {
-        const user: AuthUser = {
-          id: "2",
-          email: "client@test.com",
-          fullName: "Client Alpha",
-          company: "GlobalTech Solutions",
-          role: "client",
-        };
-        setAuth(user);
-        router.push("/client");
+        router.push(user.role === "admin" ? "/admin" : "/client");
       } else {
-        setError("Identifiants invalides (admin@smart.com / admin)");
+        setError(data.detail || "Invalid credentials");
       }
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("Connection error. Please check if the backend is running.");
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 relative overflow-hidden">
       {/* Background Orbs */}
-      <div className="absolute top-0 -left-20 w-96 h-96 bg-blue-600/20 rounded-full blur-[120px] animate-pulse"></div>
-      <div className="absolute bottom-0 -right-20 w-96 h-96 bg-emerald-600/10 rounded-full blur-[120px] animate-pulse delay-700"></div>
+      <div className="absolute top-0 -left-20 w-96 h-96 bg-blue-600/5 rounded-full blur-[120px] animate-pulse"></div>
+      <div className="absolute bottom-0 -right-20 w-96 h-96 bg-emerald-600/5 rounded-full blur-[120px] animate-pulse delay-700"></div>
 
       <div className="w-full max-w-md z-10">
-        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-8 rounded-3xl shadow-2xl">
+        <div className="bg-white border border-slate-200 p-8 rounded-3xl shadow-xl">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-linear-to-br from-blue-500 to-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/20">
+            <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
               <Shield className="text-white w-8 h-8" />
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2">Bienvenue</h1>
-            <p className="text-slate-400 text-sm">Connectez-vous à votre espace SmartWarehouse</p>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Bienvenue</h1>
+            <p className="text-slate-500 text-sm">Connectez-vous à votre espace SmartWarehouse</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 ml-1">Email</label>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2 ml-1">Email</label>
               <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl py-3.5 pl-12 pr-4 text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-12 pr-4 text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder:text-slate-300"
                   placeholder="nom@entreprise.com"
                   required
                 />
@@ -86,14 +87,14 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2 ml-1">Mot de passe</label>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2 ml-1">Mot de passe</label>
               <div className="relative">
-                <Shield className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <Shield className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl py-3.5 pl-12 pr-4 text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-12 pr-4 text-slate-900 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder:text-slate-300"
                   placeholder="••••••••"
                   required
                 />
@@ -101,7 +102,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs py-3 px-4 rounded-xl flex items-center gap-2">
+              <div className="bg-red-50 border border-red-100 text-red-600 text-xs py-3 px-4 rounded-xl flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></div>
                 {error}
               </div>
@@ -110,7 +111,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-900/30 flex items-center justify-center gap-2 group"
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-2xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 group"
             >
               {loading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -123,16 +124,16 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-slate-800 flex flex-col gap-4">
+          <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col gap-4">
             <button 
               onClick={() => router.push("/register")}
-              className="text-center text-sm text-slate-400 hover:text-white transition-colors flex items-center justify-center gap-2"
+              className="text-center text-sm text-slate-500 hover:text-slate-700 transition-colors flex items-center justify-center gap-2"
             >
-              Pas encore de compte ? <span className="text-blue-400 font-semibold underline decoration-blue-400/30 underline-offset-4">S'enregistrer</span>
+              Pas encore de compte ? <span className="text-blue-600 font-semibold underline decoration-blue-600/30 underline-offset-4">S'enregistrer</span>
             </button>
           </div>
         </div>
-        <p className="text-center mt-8 text-slate-600 text-xs">
+        <p className="text-center mt-8 text-slate-400 text-xs">
           SmartWarehouse AI v2.0 &bull; Secure Logistics Engine
         </p>
       </div>

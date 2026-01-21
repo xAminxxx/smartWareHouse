@@ -4,20 +4,21 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getAuth, clearAuth, AuthUser } from "../../lib/auth";
 import { 
-  LogOut, Package, MessageSquare, Send, 
-  Clock, CheckCircle, User, Loader2, 
-  ArrowRight, Search, Plus
+  LogOut, MessageSquare, Send, 
+  Plus, Menu, X, Trash2,
+  Package, ChevronDown, Edit3
 } from "lucide-react";
 
 export default function ClientDashboard() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [chatInput, setChatInput] = useState("");
-  const [chatLog, setChatLog] = useState<{ role: "user" | "ai"; text: string }[]>([
-    { role: "ai", text: "Bonjour ! Je suis votre assistant logistique. Comment puis-je vous aider aujourd'hui ?" }
-  ]);
+  const [chatLog, setChatLog] = useState<{ role: "user" | "ai"; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [sessions, setSessions] = useState<any[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -63,8 +64,21 @@ export default function ClientDashboard() {
 
   const startNewChat = () => {
     setActiveSessionId(null);
-    setChatLog([{ role: "ai", text: "Nouvelle session démarrée. Bagaimana saya bisa membantu Anda?" }]);
-    document.getElementById('chat-input')?.focus();
+    setChatLog([]);
+    setTimeout(() => document.getElementById('chat-input')?.focus(), 100);
+  };
+
+  const deleteSession = async (sessionId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await fetch(`http://localhost:8000/chat-sessions/${sessionId}`, { method: 'DELETE' });
+      setSessions(prev => prev.filter(s => s.idSession !== sessionId));
+      if (activeSessionId === sessionId) {
+        startNewChat();
+      }
+    } catch (err) {
+      console.error("Error deleting session:", err);
+    }
   };
 
   useEffect(() => {
@@ -102,7 +116,7 @@ export default function ClientDashboard() {
         fetchSessions();
       }
     } catch (err) {
-      setChatLog(prev => [...prev, { role: "ai", text: "Désolé, j'ai du mal à me connecter au serveur." }]);
+      setChatLog(prev => [...prev, { role: "ai", text: "Désolé, une erreur s'est produite. Veuillez réessayer." }]);
     } finally {
       setLoading(false);
     }
@@ -111,174 +125,257 @@ export default function ClientDashboard() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
-      {/* Client Header */}
-      <header className="h-16 bg-white border-b border-slate-200 px-6 sm:px-12 flex items-center justify-between sticky top-0 z-20">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+    <div className="h-screen bg-slate-50 text-slate-900 flex overflow-hidden">
+      {/* Sidebar */}
+      <aside className={`${sidebarOpen ? 'w-64' : 'w-0'} bg-white border-r border-slate-200 flex flex-col transition-all duration-300 overflow-hidden`}>
+        {/* Logo */}
+        <div className="p-6 flex items-center gap-3 shrink-0">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/20">
             <Package className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-lg hidden sm:block">SmartPortal</span>
+          <span className="font-bold text-xl tracking-tight">Smart<span className="text-blue-500">WH</span></span>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block text-xs uppercase font-bold tracking-tight text-slate-500">
-               {user.fullName}
-            </div>
-            <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center font-bold text-slate-600 text-xs shadow-inner">
-              {user.fullName.charAt(0)}
-            </div>
-            <button onClick={handleLogout} className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-full transition-colors">
-              <LogOut className="w-5 h-5" />
-            </button>
-          </div>
+        {/* New Chat Button */}
+        <div className="px-4 pb-4">
+          <button 
+            onClick={startNewChat}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-all group shadow-lg shadow-blue-500/20 font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="text-sm">Nouvelle discussion</span>
+          </button>
         </div>
-      </header>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full p-6 sm:p-12 grid grid-cols-1 lg:grid-cols-12 gap-12">
-        {/* Left Side: Orders & Status */}
-        <div className="lg:col-span-12 xl:col-span-7 space-y-8">
-          <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">
-              Bonjour, <span className="text-blue-600">{user.fullName.split(' ')[0]}</span>.
-            </h1>
-            <p className="text-slate-500 mt-2 text-lg">Prêt pour votre prochaine commande logistique ?</p>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <Clock className="w-3 h-3" />
-              Historique des Sessions
-            </h3>
-            <div className="bg-white border border-slate-200 rounded-4xl overflow-hidden shadow-sm">
-                {sessions.length > 0 ? (
-                  sessions.map((s) => (
-                    <HistoryItem 
-                      key={s.idSession}
-                      title={s.title} 
-                      date={new Date(s.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} 
-                      status={activeSessionId === s.idSession ? "Actif" : "Archives"} 
-                      active={activeSessionId === s.idSession}
-                      onClick={() => loadSession(s.idSession)}
+        {/* Sessions List */}
+        <div className="flex-1 overflow-y-auto px-3 pb-2">
+          <div className="text-xs text-slate-400 px-3 py-2 font-bold uppercase tracking-wider">Historique</div>
+          {sessions.length > 0 ? (
+            <div className="space-y-1">
+              {sessions.map((session) => (
+                <div
+                  key={session.idSession}
+                  onClick={() => loadSession(session.idSession)}
+                  className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+                    activeSessionId === session.idSession 
+                      ? 'bg-blue-50 text-blue-600' 
+                      : 'hover:bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  <MessageSquare className="w-4 h-4 shrink-0" />
+                  {editingSessionId === session.idSession ? (
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onBlur={() => setEditingSessionId(null)}
+                      onKeyDown={(e) => e.key === 'Enter' && setEditingSessionId(null)}
+                      className="flex-1 bg-transparent text-sm outline-none text-slate-900"
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
                     />
-                  ))
-                ) : (
-                  <div className="p-8 text-center text-slate-400 text-sm italic">
-                    Aucune session passée trouvée.
-                  </div>
-                )}
-            </div>
-          </div>
-
-          <div className="bg-linear-to-br from-blue-600 to-indigo-700 p-8 rounded-4xl text-white shadow-xl shadow-blue-500/20">
-            <h3 className="font-bold mb-2 flex items-center gap-2">
-              <Plus className="w-5 h-5" />
-              Nouvelle Discussion
-            </h3>
-            <p className="text-blue-100 text-sm leading-relaxed mb-6">
-              Posez votre question à l'IA pour démarrer une nouvelle session logistique intelligente.
-            </p>
-            <button 
-              onClick={startNewChat}
-              className="bg-white text-blue-600 px-6 py-3 rounded-2xl font-bold text-sm hover:bg-blue-50 transition-all active:scale-95"
-            >
-              Démarrer maintenant
-            </button>
-          </div>
-        </div>
-
-        {/* Right Side: AI Assistant */}
-        <div className="lg:col-span-12 xl:col-span-5 h-[600px] xl:h-[calc(100vh-200px)] sticky top-28">
-          <div className="bg-white rounded-4xl border border-slate-200 flex flex-col h-full shadow-2xl shadow-blue-900/5 overflow-hidden ring-1 ring-slate-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20">
-                  <MessageSquare className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm">Assistant Logistique</h4>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Expert IA en ligne</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 p-6 overflow-y-auto space-y-4 text-sm bg-linear-to-b from-white to-slate-50">
-              {chatLog.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-4 rounded-3xl ${
-                    msg.role === 'user' 
-                      ? 'bg-blue-600 text-white rounded-tr-none shadow-lg shadow-blue-600/20' 
-                      : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm'
-                  }`}>
-                    {msg.text}
+                  ) : (
+                    <span className="flex-1 text-sm truncate">
+                      {session.title || "Nouvelle conversation"}
+                    </span>
+                  )}
+                  <div className="hidden group-hover:flex items-center gap-1">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingSessionId(session.idSession);
+                        setEditTitle(session.title || "");
+                      }}
+                      className="p-1 hover:bg-slate-200 rounded"
+                    >
+                      <Edit3 className="w-3 h-3 text-slate-400" />
+                    </button>
+                    <button 
+                      onClick={(e) => deleteSession(session.idSession, e)}
+                      className="p-1 hover:bg-red-50 rounded"
+                    >
+                      <Trash2 className="w-3 h-3 text-slate-400 hover:text-red-500" />
+                    </button>
                   </div>
                 </div>
               ))}
+            </div>
+          ) : (
+            <div className="px-3 py-4 text-center text-slate-400 text-xs">
+              Aucune conversation
+            </div>
+          )}
+        </div>
+
+        {/* User Profile Section */}
+        <div className="border-t border-slate-100 p-4">
+          <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-slate-100 cursor-pointer group">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center text-sm font-bold text-white shadow-lg shadow-blue-500/20 ring-2 ring-white">
+              {user.fullName.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold truncate text-slate-900">{user.fullName}</p>
+              <p className="text-xs text-slate-500 truncate">{user.email}</p>
+            </div>
+            <button 
+              onClick={handleLogout}
+              className="p-2 hover:bg-red-100 rounded-lg transition-all"
+              title="Déconnexion"
+            >
+              <LogOut className="w-4 h-4 text-red-500 hover:text-red-600" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Chat Area */}
+      <main className="flex-1 flex flex-col bg-slate-50 relative">
+        {/* Header */}
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 flex items-center justify-between z-10">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+            <h1 className="text-sm font-bold text-slate-400 hidden sm:block">Espace Client - Assistant Logistique</h1>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+              <span className="text-xs font-semibold text-emerald-500 uppercase tracking-wider">En ligne</span>
+            </div>
+          </div>
+        </header>
+
+        {/* Chat Messages */}
+        <div className="flex-1 overflow-y-auto">
+          {chatLog.length === 0 ? (
+            /* Empty State - Welcome Screen */
+            <div className="h-full flex flex-col items-center justify-center px-4">
+              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-blue-500/20">
+                <Package className="w-8 h-8 text-white" />
+              </div>
+              <h1 className="text-2xl font-semibold mb-2 text-slate-900">Bonjour, <span className="text-blue-500">{user.fullName.split(' ')[0]}</span></h1>
+              <p className="text-slate-500 text-center max-w-md mb-8">
+                Je suis votre assistant logistique. Comment puis-je vous aider aujourd&apos;hui ?
+              </p>
+              
+              {/* Quick Actions */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
+                {[
+                  { text: "Commander 10 claviers USB", icon: "📦" },
+                  { text: "Vérifier le stock disponible", icon: "📊" },
+                  { text: "Suivre mes commandes en cours", icon: "🚚" },
+                  { text: "Contacter le support", icon: "💬" }
+                ].map((action, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setChatInput(action.text);
+                      document.getElementById('chat-input')?.focus();
+                    }}
+                    className="flex items-center gap-3 p-4 bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-2xl text-left transition-all group shadow-sm hover:shadow-md"
+                  >
+                    <span className="text-xl">{action.icon}</span>
+                    <span className="text-sm text-slate-600 group-hover:text-blue-600 transition-colors">{action.text}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* Chat Messages */
+            <div className="max-w-3xl mx-auto w-full px-4 py-6">
+              {chatLog.map((msg, i) => (
+                <div key={i} className={`mb-6 ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
+                  <div className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                    {/* Avatar */}
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                      msg.role === 'user' 
+                        ? 'bg-gradient-to-br from-blue-500 to-indigo-500 shadow-lg shadow-blue-500/20' 
+                        : 'bg-blue-600 shadow-lg shadow-blue-500/20'
+                    }`}>
+                      {msg.role === 'user' ? (
+                        <span className="text-xs font-bold">{user.fullName.charAt(0)}</span>
+                      ) : (
+                        <Package className="w-4 h-4 text-white" />
+                      )}
+                    </div>
+                    
+                    {/* Message Content */}
+                    <div className={`flex-1 ${msg.role === 'user' ? 'text-right' : ''}`}>
+                      <div className="text-xs text-slate-500 mb-1 font-medium">
+                        {msg.role === 'user' ? 'Vous' : 'SmartWarehouse'}
+                      </div>
+                      <div className={`inline-block text-sm leading-relaxed ${
+                        msg.role === 'user'
+                          ? 'bg-blue-600 text-white px-4 py-3 rounded-2xl rounded-tr-sm shadow-lg shadow-blue-500/20'
+                          : 'text-slate-700 bg-white px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm border border-slate-100'
+                      }`}>
+                        {msg.text}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              {/* Loading Indicator */}
               {loading && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-slate-200 p-4 rounded-3xl rounded-tl-none shadow-sm flex items-center gap-3">
-                    <div className="flex gap-1">
-                      <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce"></div>
-                      <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce delay-75"></div>
-                      <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce delay-150"></div>
+                <div className="mb-6">
+                  <div className="flex gap-4">
+                    <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/20">
+                      <Package className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-xs text-slate-500 mb-1 font-medium">SmartWarehouse</div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
               <div ref={chatEndRef} />
             </div>
+          )}
+        </div>
 
-            <div className="p-6 border-t border-slate-100">
-              <form onSubmit={handleChatSubmit} className="relative">
-                <input 
+        {/* Input Area */}
+        <div className="p-4 border-t border-slate-200 bg-white">
+          <div className="max-w-3xl mx-auto">
+            <form onSubmit={handleChatSubmit} className="relative">
+              <div className="relative bg-slate-50 rounded-2xl border border-slate-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all shadow-sm">
+                <textarea 
                   id="chat-input"
-                  type="text" 
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Dites quelque chose comme 'Commander 10 claviers'..."
-                  className="w-full bg-slate-100 border-none rounded-2xl py-4 pl-5 pr-14 text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder:text-slate-400"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleChatSubmit(e);
+                    }
+                  }}
+                  placeholder="Envoyer un message..."
+                  rows={1}
+                  className="w-full bg-transparent text-slate-900 placeholder-slate-400 px-4 py-3.5 pr-14 text-sm outline-none resize-none max-h-32"
                 />
                 <button 
                   type="submit"
                   disabled={loading || !chatInput.trim()}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex items-center justify-center transition-all disabled:opacity-50 disabled:scale-95 active:scale-90"
+                  className="absolute right-2 bottom-2 w-8 h-8 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl flex items-center justify-center transition-all shadow-lg shadow-blue-500/20"
                 >
                   <Send className="w-4 h-4" />
                 </button>
-              </form>
-            </div>
+              </div>
+              <p className="text-center text-xs text-slate-400 mt-2">
+                SmartWarehouse peut faire des erreurs. Vérifiez les informations importantes.
+              </p>
+            </form>
           </div>
         </div>
       </main>
-    </div>
-  );
-}
-
-function HistoryItem({ title, date, status, active, onClick }: any) {
-  return (
-    <div 
-      onClick={onClick}
-      className={`p-5 flex items-center justify-between border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-all cursor-pointer group ${active ? 'bg-blue-50/50' : ''}`}
-    >
-      <div className="flex items-center gap-4">
-        <div className={`w-10 h-10 ${active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'} rounded-xl flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors`}>
-          <MessageSquare className="w-5 h-5" />
-        </div>
-        <div>
-          <p className={`font-bold text-sm ${active ? 'text-blue-700' : 'text-slate-800'}`}>{title}</p>
-          <p className="text-xs text-slate-500 mt-0.5">{date}</p>
-        </div>
-      </div>
-      <div className="flex items-center gap-4">
-        <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${active ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
-          {status}
-        </span>
-        <ArrowRight className={`w-4 h-4 transition-all transform group-hover:translate-x-1 ${active ? 'text-blue-600' : 'text-slate-300'}`} />
-      </div>
     </div>
   );
 }

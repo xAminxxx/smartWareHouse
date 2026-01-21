@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #020617;
-  --foreground: #f8fafc;
+  --background: #f8fafc;
+  --foreground: #0f172a;
 }
 
 body {
@@ -44,11 +44,11 @@ body {
   }
 
   .scrollbar-custom::-webkit-scrollbar-thumb {
-    @apply bg-slate-800 rounded-full;
+    @apply bg-slate-200 rounded-full;
   }
 
   .scrollbar-custom::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-700;
+    @apply bg-slate-300;
   }
 }
 
