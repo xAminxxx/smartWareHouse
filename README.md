@@ -95,10 +95,18 @@ npm run dev
 
 ## 👤 Test Credentials
 
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@smart.com | admin |
-| Client | client@test.com | client |
+| Role | Email | Password | Notes |
+|------|-------|----------|-------|
+| Admin | admin@smart.com | admin | Hardcoded admin access |
+| Client | client@test.com | client | Sample client account |
+
+**Note:** New registrations through the UI automatically receive `role='client'`. Admin users must be created manually in the database:
+
+```sql
+-- Create admin user manually via phpMyAdmin or MySQL CLI
+INSERT INTO user (email, motpass, role) VALUES 
+('admin@smart.com', SHA2('admin', 256), 'admin');
+```
 
 ## 📁 Project Structure
 

@@ -59,7 +59,11 @@ export default function InventoryPage() {
   const fetchInventory = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/inventory");
+      const headers = {
+        "Content-Type": "application/json",
+        "X-User-Role": "admin"
+      };
+      const res = await fetch("http://localhost:8000/inventory", { headers });
       const data = await res.json();
       setInventory(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -83,7 +87,10 @@ export default function InventoryPage() {
     try {
       const res = await fetch("http://localhost:8000/inventory", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "X-User-Role": "admin"
+        },
         body: JSON.stringify(formData),
       });
       if (res.ok) {
@@ -101,7 +108,10 @@ export default function InventoryPage() {
     try {
       const res = await fetch(`http://localhost:8000/inventory/${editingProduct.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "X-User-Role": "admin"
+        },
         body: JSON.stringify(formData),
       });
       if (res.ok) {
@@ -120,6 +130,9 @@ export default function InventoryPage() {
     try {
       const res = await fetch(`http://localhost:8000/inventory/${id}`, {
         method: "DELETE",
+        headers: { 
+          "X-User-Role": "admin"
+        },
       });
       if (res.ok) {
         setInventory(prev => prev.filter(item => item.id !== id));

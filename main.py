@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
@@ -171,118 +171,13 @@ async def chatbot_order(data: dict):
             save_chat_message, get_chat_messages, create_chat_session,
             get_complete_arrival_info, confirm_order, verify_plate,
             get_client_by_user, get_awaiting_orders_for_plate, confirm_pickup,
-            complete_order, get_order_by_plate
+            complete_order, get_order_by_plate, get_active_orders_for_user
         )
         
-        # ====================================================================
-        # SPECIAL: Handle Pickup Completion (any confirmation keywords)
-        # ====================================================================
-        pickup_keywords = ['pickup', 'pris', 'pris commande', 'took', 'taken', 'picked', 'done', 'terminé', 'termine', 'fini', 'completed', 'success', 'succes', 'order picked', 'commande prise']
-        if detected_plate and any(keyword in user_message.lower() for keyword in pickup_keywords):
-            # Normalize plate
-            import re
-            def normalize_tunisian_plate(plate_str):
-                if not plate_str:
-                    return plate_str
-                normalized = plate_str.lower()
-                normalized = re.sub(r'\b(tounes|tunisie|tunis|tun)\b', 'تونس', normalized, flags=re.IGNORECASE)
-                normalized = re.sub(r'\b(rs|nt)\b', 'نت', normalized, flags=re.IGNORECASE)
-                return normalized.strip()
-            
-            detected_plate = normalize_tunisian_plate(detected_plate)
-            
-            # Find the active order for this plate
-            order_info = get_order_by_plate(detected_plate)
-            
-            if order_info["found"]:
-                order = order_info["order"]
-                order_id = order["idCommande"]
-                
-                # Mark order as picked_up
-                result = confirm_pickup(order_id, user_id)
-                
-                if result["success"]:
-                    save_chat_message(session_id, "user", user_message)
-                    save_chat_message(session_id, "ai", f"✅ Pickup confirmé! Commande #{order_id} pour {order['client_nom']} marquée comme 'picked_up'. Le véhicule {detected_plate} peut partir.")
-                    
-                    return {
-                        "status": "success",
-                        "type": "order_completed",
-                        "message": f"✅ Pickup terminé avec succès!\n\nCommande #{order_id} marquée comme PICKED_UP\nClient: {order['client_nom']}\nProduit: {order['produit_nom']} x{order['quantite']}\nVéhicule: {detected_plate} peut quitter le quai",
-                        "order_id": order_id,
-                        "plate": detected_plate,
-                        "old_status": result.get("old_status"),
-                        "new_status": result.get("new_status"),
-                        "session_id": session_id
-                    }
-                else:
-                    save_chat_message(session_id, "user", user_message)
-                    save_chat_message(session_id, "ai", f"❌ Erreur: {result['error']}")
-                    
-                    return {
-                        "status": "error",
-                        "type": "completion_failed",
-                        "message": f"Erreur lors de la finalisation: {result['error']}",
-                        "session_id": session_id
-                    }
-            else:
-                # No order found, let chatbot handle normally
-                pass
-        
-        # ====================================================================
-        # SPECIAL: Handle Pickup Confirmation (any simple confirmation)
-        # ====================================================================
-        if detected_plate and user_message.lower() in ['yes', 'confirm', 'oui', 'ok', 'pickup', 'livré']:
-            # Import normalize function
-            import re
-            def normalize_tunisian_plate(plate_str):
-                if not plate_str:
-                    return plate_str
-                normalized = plate_str.lower()
-                normalized = re.sub(r'\b(tounes|tunisie|tunis|tun)\b', 'تونس', normalized, flags=re.IGNORECASE)
-                normalized = re.sub(r'\b(rs|nt)\b', 'نت', normalized, flags=re.IGNORECASE)
-                return normalized.strip()
-            
-            detected_plate = normalize_tunisian_plate(detected_plate)
-            
-            # Find the awaiting order for this plate
-            arrival_info = get_awaiting_orders_for_plate(detected_plate)
-            
-            if arrival_info["found"]:
-                order = arrival_info["order"]
-                order_id = order["idCommande"]
-                
-                # Directly mark the order as completed (awaiting -> terminée)
-                result = complete_order(order_id, user_id)
-                
-                if result["success"]:
-                    save_chat_message(session_id, "user", user_message)
-                    save_chat_message(session_id, "ai", f"✅ Pickup confirmé! Commande #{order_id} terminée. Le véhicule {detected_plate} peut partir.")
-                    
-                    return {
-                        "status": "success",
-                        "type": "pickup_confirmed",
-                        "message": f"✅ Pickup confirmé! Commande #{order_id} marquée 'terminée'\n\nClient: {order['client_nom']}\nProduit: {order['produit_nom']} x{order['quantite']}\nVéhicule: {order['plaque_vehicule']}",
-                        "order_id": order_id,
-                        "plate": detected_plate,
-                        "session_id": session_id
-                    }
-                else:
-                    save_chat_message(session_id, "user", user_message)
-                    save_chat_message(session_id, "ai", f"❌ Error: {result['error']}")
-                    
-                    return {
-                        "status": "error",
-                        "type": "pickup_failed",
-                        "message": f"Error confirming pickup: {result['error']}",
-                        "session_id": session_id
-                    }
-            else:
-                return {
-                    "status": "error",
-                    "message": f"No awaiting order found for plate {detected_plate}",
-                    "session_id": session_id
-                }
+        # Get session first
+        if not session_id:
+            title = user_message[:30] + "..." if len(user_message) > 30 else user_message
+            session_id = create_chat_session(user_id or 1, title)
         
         # ====================================================================
         # SPECIAL: Handle Order Confirmation (user replies "yes" to preview)
@@ -310,7 +205,7 @@ async def chatbot_order(data: dict):
                 }
         
         # ====================================================================
-        # MAIN: Get warehouse context and send to LLM
+        # MAIN: Gather context for LLM (let it be the brain)
         # ====================================================================
         available_clients = list_clients()
         available_products = list_products()
@@ -320,23 +215,26 @@ async def chatbot_order(data: dict):
         user_client_name = user_client['nom'] if user_client else None
         user_client_id = user_client['idClient'] if user_client else None
         
+        # Get user's active orders for context (pass to LLM)
+        user_active_orders = []
+        active_orders_text = ""
+        if user_id:
+            active_result = get_active_orders_for_user(user_id)
+            if active_result.get("success"):
+                user_active_orders = active_result.get("orders", [])
+                if user_active_orders:
+                    active_orders_text = "COMMANDES ACTIVES DE L'UTILISATEUR:\n"
+                    for o in user_active_orders:
+                        active_orders_text += f"- Commande #{o['id']}: {o['product_name']} x{o['quantity']} | Plaque: {o.get('plate') or 'N/A'}\n"
+        
         # Check for existing orders for detected plate
         order_info = None
         current_order_status = None
         if detected_plate:
-            # Check if there's a recent order (any status) for this plate
             order_lookup = get_order_by_plate(detected_plate)
             if order_lookup and order_lookup.get("found"):
                 order_info = order_lookup["order"]
                 current_order_status = order_info.get("statut")
-            else:
-                # Fallback to old method
-                order_info = get_complete_arrival_info(detected_plate)
-        
-        # Determine Session FIRST (so we can get chat history)
-        if not session_id:
-            title = user_message[:30] + "..." if len(user_message) > 30 else user_message
-            session_id = create_chat_session(user_id or 1, title)
         
         # Get conversation history for context
         chat_history = get_chat_messages(session_id) if session_id else []
@@ -357,6 +255,9 @@ async def chatbot_order(data: dict):
         # RAG: Retrieve relevant rules from knowledge base
         # ====================================================================
         from src.rag_engine import WarehouseRAGEngine
+        from src.database import (
+            get_pending_orders_today, get_sales_report_today, get_clients_visited_today
+        )
         rag_engine = WarehouseRAGEngine()
         
         # Query for chatbot rules and relevant policies
@@ -364,51 +265,83 @@ async def chatbot_order(data: dict):
         rag_rules = rag_engine.query(rag_query, n_results=5)
         rag_context = "\n".join(rag_rules) if rag_rules else ""
         
-        context_summary = f"""Tu es l'assistant SmartWarehouse.
+        # ====================================================================
+        # ADMIN QUERIES: Build context for admin business flows
+        # ====================================================================
+        pending_orders_context = ""
+        sales_report_context = ""
+        clients_visited_context = ""
+        
+        # Pending orders today (for "commandes en attente" query)
+        pending_result = get_pending_orders_today()
+        if pending_result.get("success"):
+            orders = pending_result.get("orders", [])
+            if orders:
+                pending_orders_context = "COMMANDES EN ATTENTE AUJOURD'HUI:\n"
+                for o in orders:
+                    pending_orders_context += f"- #{o['id']}: {o['client_name']} | {o['product_name']} x{o['quantity']} | Plaque: {o.get('plate') or 'N/A'}\n"
+        
+        # Sales report today (for "bilan du jour" query)
+        sales_result = get_sales_report_today()
+        if sales_result.get("success"):
+            products = sales_result.get("products", [])
+            revenue = sales_result.get("total_revenue", 0)
+            if products:
+                sales_report_context = "📊 BILAN VENTES AUJOURD'HUI:\n"
+                for p in products:
+                    sales_report_context += f"- {p['product_name']}: {p['total_qty']} unités | Revenu: {p.get('total_revenue', 0)} TND\n"
+                sales_report_context += f"REVENU TOTAL: {revenue} TND\n"
+        
+        # Clients visited today (for "clients passés aujourd'hui" query)
+        clients_result = get_clients_visited_today()
+        if clients_result.get("success"):
+            clients = clients_result.get("clients", [])
+            if clients:
+                clients_visited_context = f"CLIENTS PASSÉS AUJOURD'HUI: {', '.join(clients)}\n"
+        
+        context_summary = f"""Tu es l'assistant SmartWarehouse (pickup-only).
+Aujourd'hui: {datetime.datetime.now().strftime('%Y-%m-%d')}
 
 CONTEXTE UTILISATEUR:
 - Client connecté: {user_client_name or 'Non connecté'}
 - ID client: {user_client_id or 'N/A'}
 {('- Véhicule détecté au portail: ' + detected_plate) if detected_plate else ''}
-{('- Statut commande actuelle: ' + current_order_status) if current_order_status else ''}
-{('- Raisonnement vision: ' + vision_reasoning) if vision_reasoning else ''}
-{('- Décision vision: ' + str(vision_decision)) if vision_decision else ''}
+
+{active_orders_text if active_orders_text else ''}
 
 IMPORTANT - RÈGLES DE STATUT (FLOW PICKUP UNIQUEMENT):
 Statut workflow: awaiting_pickup → picked_up
-- Si statut = "awaiting_pickup" : Commande prête pour enlèvement.
-- Si statut = "picked_up" : Commande retirée, le véhicule peut partir. Ne suggère AUCUNE action.
+- Si l'utilisateur demande "suivi de commande", liste ses commandes actives
+- Si l'utilisateur demande du support, fournis les coordonnées officielles
+- Pour confirmer un pickup, tu peux proposer les DB via des intentions spéciales
 
 PRODUITS DISPONIBLES:
-{chr(10).join(products_info) if products_info else 'Aucun produit'}
+{chr(10).join([f'{p["name"]} (Stock: {p.get("stock", "N/A")}, Prix: {p.get("price", "N/A")} TND)' for p in available_products]) if available_products else 'Aucun produit'}
+
+CONTEXTE ADMIN (REQUÊTES MÉTIER):
+{pending_orders_context if pending_orders_context else 'Pas de commandes en attente aujourd\'hui'}
+{sales_report_context if sales_report_context else 'Pas de ventes aujourd\'hui'}
+{clients_visited_context if clients_visited_context else 'Pas de clients visiteurs aujourd\'hui'}
 
 HISTORIQUE DE CONVERSATION:
 {history_text if history_text else 'Nouvelle conversation'}
 
-RÈGLES ET POLITIQUES (applique ces règles):
+RÈGLES ET POLITIQUES (du système RAG):
 {rag_context if rag_context else 'Pas de règles spécifiques'}
 
-CONTEXTE TECHNIQUE (TRÈS IMPORTANT - NE PAS IGNORER):
-- Le client connecté est "{user_client_name}" - utilise ce nom pour les commandes.
-- Pour créer une commande dans la base de données, tu DOIS avoir les 3 informations:
-  1. Produit (obligatoire)
-  2. Quantité (obligatoire)  
-  3. Numéro de plaque du véhicule (OBLIGATOIRE - SANS PLAQUE = PAS DE COMMANDE)
-- Si la plaque manque, tu DOIS demander: "Quel est le numéro de plaque du véhicule pour l'enlèvement?"
-- NE JAMAIS dire que la commande est enregistrée/confirmée si tu n'as pas la plaque!
-- Formats de plaque acceptés: "159 تونس 8240" ou "3341323 نت"
-- Retourne intent='order_preview' UNIQUEMENT quand tu as les 3 informations.
+CONTEXTE TECHNIQUE:
+- Le client connecté est "{user_client_name}" - utilise ce nom pour les commandes
+- Pour créer une commande: produit + quantité + plaque (TOUS OBLIGATOIRES)
+- Sans plaque = pas de commande
+- Formats plaque: "159 تونس 8240" ou "3341323 نت"
+- Retourne intent='order_preview' UNIQUEMENT avec les 3 infos
 
-FORMAT DE RÉPONSE (JSON obligatoire):
+FORMAT DE RÉPONSE (JSON):
 {{
-    "response": "Ta réponse",
+    "response": "Ta réponse au client",
     "intent": "chat|order_preview",
-    "details": {{ "client": "{user_client_name}", "product": "nom du produit exact", "quantity": nombre, "plate": "numéro de plaque ou null" }}
+    "details": {{ "client": "{user_client_name}", "product": "nom exact", "quantity": nombre, "plate": "plaque ou null" }}
 }}
-
-INTENTS:
-- "chat" → Réponse normale, ou demande d'information manquante (UTILISE CECI si plaque manquante)
-- "order_preview" → Commande COMPLÈTE avec produit + quantité + plaque (les 3 obligatoires)
 
 Message de l'utilisateur: "{user_message}"
 """
@@ -624,7 +557,11 @@ async def get_inventory():
         return {"status": "error", "message": str(e)}
 
 @app.post("/inventory")
-async def create_product(data: ProductCreate):
+async def create_product(data: ProductCreate, request: Request):
+    """Admin only: Create new product"""
+    user_role = request.headers.get("X-User-Role")
+    if user_role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
     try:
         from src.database import add_product
         id_prod = add_product(data.name, data.stock, data.price)
@@ -637,7 +574,11 @@ async def create_product(data: ProductCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/inventory/{id_prod}")
-async def edit_product(id_prod: int, data: ProductUpdate):
+async def edit_product(id_prod: int, data: ProductUpdate, request: Request):
+    """Admin only: Update product"""
+    user_role = request.headers.get("X-User-Role")
+    if user_role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
     try:
         from src.database import update_product
         update_product(id_prod, data.name, data.stock, data.price)
@@ -646,7 +587,11 @@ async def edit_product(id_prod: int, data: ProductUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/inventory/{id_prod}")
-async def remove_product(id_prod: int):
+async def remove_product(id_prod: int, request: Request):
+    """Admin only: Delete product"""
+    user_role = request.headers.get("X-User-Role")
+    if user_role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
     try:
         from src.database import delete_product
         delete_product(id_prod)

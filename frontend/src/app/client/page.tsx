@@ -264,15 +264,15 @@ export default function ClientDashboard() {
               {/* Quick Actions */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
                 {[
-                  { text: "Commander 10 claviers USB", icon: "📦" },
-                  { text: "Vérifier le stock disponible", icon: "📊" },
-                  { text: "Suivre mes commandes en cours", icon: "🚚" },
-                  { text: "Contacter le support", icon: "💬" }
+                  { text: "Commander 10 claviers USB", icon: "📦", payload: "Commander 10 claviers USB" },
+                  { text: "Vérifier le stock disponible", icon: "📊", payload: "Vérifier le stock disponible" },
+                  { text: "Suivi de commande", icon: "🚚", payload: "Suivi de commande" },
+                  { text: "Contacter le support", icon: "💬", payload: "Contacter le support" }
                 ].map((action, i) => (
                   <button
                     key={i}
                     onClick={() => {
-                      setChatInput(action.text);
+                      setChatInput(action.payload);
                       document.getElementById('chat-input')?.focus();
                     }}
                     className="flex items-center gap-3 p-4 bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-2xl text-left transition-all group shadow-sm hover:shadow-md"

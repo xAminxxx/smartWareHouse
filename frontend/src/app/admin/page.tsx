@@ -42,9 +42,13 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
+        const headers = {
+          "Content-Type": "application/json",
+          "X-User-Role": "admin"
+        };
         const [inventoryRes, metricsRes] = await Promise.all([
-          fetch("http://localhost:8000/inventory"),
-          fetch("http://localhost:8000/dashboard")
+          fetch("http://localhost:8000/inventory", { headers }),
+          fetch("http://localhost:8000/dashboard", { headers })
         ]);
         const inventoryData = await inventoryRes.json();
         const metricsData = await metricsRes.json();
@@ -54,8 +58,10 @@ export default function AdminDashboard() {
         console.error("Error fetching dashboard:", err);
       }
     };
-    fetchDashboard();
-  }, []);
+    if (user) {
+      fetchDashboard();
+    }
+  }, [user]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });

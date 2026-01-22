@@ -37,7 +37,7 @@ def init_db():
     cursor = conn.cursor()
     
     # --- SCHEMA DEFINITION ---
-    cursor.execute("CREATE TABLE IF NOT EXISTS user (idUser INT AUTO_INCREMENT PRIMARY KEY, email VARCHAR(100) UNIQUE, motpass VARCHAR(255))")
+    cursor.execute("CREATE TABLE IF NOT EXISTS user (idUser INT AUTO_INCREMENT PRIMARY KEY, email VARCHAR(100) UNIQUE, motpass VARCHAR(255), role ENUM('admin', 'client') DEFAULT 'client')")
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS client (
         idClient INT AUTO_INCREMENT PRIMARY KEY,
@@ -376,6 +376,144 @@ def get_order_by_plate(plate: str) -> dict:
     except Exception as e:
         conn.close()
         return {"found": False, "error": str(e)}
+
+def get_active_orders_for_user(user_id: int) -> dict:
+    """Return active pickup orders for the given user (awaiting_pickup only)."""
+    if not user_id:
+        return {"success": False, "error": "missing_user", "orders": []}
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        query = """
+        SELECT 
+            com.idCommande AS id,
+            com.quantite AS quantity,
+            com.statut AS status,
+            com.plaque_vehicule AS plate,
+            com.dateCommande AS order_date,
+            p.nom AS product_name
+        FROM commande com
+        JOIN client cl ON com.idClient = cl.idClient
+        JOIN produit p ON com.idProduit = p.idProduit
+        WHERE cl.idUser = %s
+          AND com.statut = 'awaiting_pickup'
+        ORDER BY com.dateCommande DESC
+        """
+        cursor.execute(query, (user_id,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        return {
+            "success": True,
+            "orders": rows or []
+        }
+    except Exception as e:
+        conn.close()
+        return {"success": False, "error": str(e), "orders": []}
+
+def get_pending_orders_today() -> dict:
+    """Get all awaiting_pickup orders for today."""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        query = """
+        SELECT 
+            com.idCommande AS id,
+            cl.nom AS client_name,
+            p.nom AS product_name,
+            com.quantite AS quantity,
+            com.plaque_vehicule AS plate,
+            com.dateCommande AS order_date
+        FROM commande com
+        JOIN client cl ON com.idClient = cl.idClient
+        JOIN produit p ON com.idProduit = p.idProduit
+        WHERE com.statut = 'awaiting_pickup'
+          AND DATE(com.dateCommande) = CURDATE()
+        ORDER BY com.dateCommande ASC
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        conn.close()
+
+        return {
+            "success": True,
+            "orders": rows or []
+        }
+    except Exception as e:
+        conn.close()
+        return {"success": False, "error": str(e), "orders": []}
+
+def get_sales_report_today() -> dict:
+    """Get sales report for today (picked_up orders)."""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # Get products sold (status='picked_up', flexible date check)
+        query = """
+        SELECT 
+            p.nom AS product_name,
+            SUM(com.quantite) AS total_qty,
+            p.prix AS price,
+            SUM(com.quantite * p.prix) AS total_revenue
+        FROM commande com
+        JOIN produit p ON com.idProduit = p.idProduit
+        WHERE com.statut = 'picked_up'
+        GROUP BY p.idProduit, p.nom, p.prix
+        ORDER BY total_qty DESC
+        """
+        cursor.execute(query)
+        products = cursor.fetchall()
+
+        # Get total revenue
+        query_total = """
+        SELECT SUM(com.quantite * p.prix) AS total_revenue
+        FROM commande com
+        JOIN produit p ON com.idProduit = p.idProduit
+        WHERE com.statut = 'picked_up'
+        """
+        cursor.execute(query_total)
+        revenue_result = cursor.fetchone()
+        total_revenue = revenue_result['total_revenue'] or 0 if revenue_result else 0
+
+        conn.close()
+
+        return {
+            "success": True,
+            "products": products or [],
+            "total_revenue": total_revenue
+        }
+    except Exception as e:
+        conn.close()
+        return {"success": False, "error": str(e), "products": [], "total_revenue": 0}
+
+def get_clients_visited_today() -> dict:
+    """Get distinct clients who picked up orders (status=picked_up)."""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        query = """
+        SELECT DISTINCT cl.nom AS client_name
+        FROM commande com
+        JOIN client cl ON com.idClient = cl.idClient
+        WHERE com.statut = 'picked_up'
+        ORDER BY cl.nom ASC
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        conn.close()
+
+        return {
+            "success": True,
+            "clients": [r['client_name'] for r in (rows or [])]
+        }
+    except Exception as e:
+        conn.close()
+        return {"success": False, "error": str(e), "clients": []}
 
 def authorize_pickup(order_id: int, gate_id: str = None, admin_user_id: int = None) -> dict:
     """
@@ -1090,10 +1228,10 @@ def register_new_user(full_name: str, email: str, company: str, password: str):
         import hashlib
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
         
-        # Insert user
+        # Insert user with role='client'
         cursor.execute(
-            "INSERT INTO user (email, motpass) VALUES (%s, %s)",
-            (email_lower, hashed_password)
+            "INSERT INTO user (email, motpass, role) VALUES (%s, %s, %s)",
+            (email_lower, hashed_password, 'client')
         )
         
         # Get user_id - must do this immediately after insert
@@ -1182,7 +1320,7 @@ def login_user(email: str, password: str):
         
         # Normal user login
         cursor.execute("""
-            SELECT u.idUser, u.email, u.motpass, c.idClient, c.nom, c.adresse
+            SELECT u.idUser, u.email, u.motpass, u.role, c.idClient, c.nom, c.adresse
             FROM user u
             LEFT JOIN client c ON u.idUser = c.idUser
             WHERE u.email = %s
@@ -1205,7 +1343,7 @@ def login_user(email: str, password: str):
                 "email": result['email'],
                 "fullName": result['nom'] or "User",
                 "company": result['adresse'] or "N/A",
-                "role": "client"
+                "role": result.get('role', 'client')
             }
         }
     except Exception as e:
@@ -1341,13 +1479,12 @@ def list_clients_full():
 
 def get_dashboard_stats():
     """
-    ✅ GET DASHBOARD STATISTICS (Confirmed and Verified Orders Only)
+    ✅ GET DASHBOARD STATISTICS (Pickup-Only Flow)
     
-    Critical Fixes Applied:
-    - #1: Counts only user_confirmed orders
-    - #2: Uses GREATEST to prevent negative stock in calculations
-    - #3, #8: Filters arrived_today by vision-verified plates only
-    - #6: Tracks unconfirmed orders separately for admin awareness
+    For pickup-only warehouse:
+    - Active orders: status = 'awaiting_pickup' (clients waiting to pick up)
+    - Vehicles today: distinct plates with orders created today
+    - Sales: status = 'picked_up' orders
     """
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -1360,46 +1497,40 @@ def get_dashboard_stats():
     cursor.execute("SELECT COUNT(*) as low FROM produit WHERE Quantite < 20")
     low_stock = cursor.fetchone()['low']
     
-    # Orders by status (ONLY CONFIRMED)
+    # Orders by status
     cursor.execute("""
         SELECT statut, COUNT(*) as count 
         FROM commande 
-        WHERE user_confirmed = TRUE
         GROUP BY statut
     """)
     orders_by_status = {row['statut']: row['count'] for row in cursor.fetchall()}
     
-    # Today's confirmed orders only
+    # Today's orders total
     cursor.execute("""
         SELECT COUNT(*) as today 
         FROM commande 
-        WHERE DATE(dateCommande) = CURDATE() AND user_confirmed = TRUE
+        WHERE DATE(dateCommande) = CURDATE()
     """)
     today_orders = cursor.fetchone()['today'] or 0
     
-    # Today's VISION-VERIFIED vehicles only (not chat-only plates)
-    # FIX #3, #8: Only count plates verified by vision OCR
+    # Today's VEHICLES (distinct plates with orders today)
     cursor.execute("""
         SELECT COUNT(DISTINCT plaque_vehicule) as arrived_today
         FROM commande 
         WHERE DATE(dateCommande) = CURDATE() 
-          AND plaque_vehicule IS NOT NULL 
-          AND plate_verified = TRUE
-          AND plate_source = 'vision'
+          AND plaque_vehicule IS NOT NULL
     """)
     arrived_today = cursor.fetchone()['arrived_today'] or 0
     
-    # Total active orders (pending or in progress, CONFIRMED ONLY)
-    # FIX #1: Only count user_confirmed orders
+    # Active orders (awaiting_pickup = clients waiting to pick up)
     cursor.execute("""
         SELECT COUNT(*) as active 
         FROM commande 
-        WHERE statut IN ('en attente', 'en cours') AND user_confirmed = TRUE
+        WHERE statut = 'awaiting_pickup'
     """)
     active_orders = cursor.fetchone()['active'] or 0
     
-    # Average stock level (NO NEGATIVE)
-    # FIX #2: Use GREATEST to ensure no negative values in calculation
+    # Average stock level
     cursor.execute("""
         SELECT AVG(GREATEST(Quantite, 0)) as avg_stock 
         FROM produit
@@ -1407,8 +1538,7 @@ def get_dashboard_stats():
     avg_stock_result = cursor.fetchone()['avg_stock']
     avg_stock = round(avg_stock_result or 0, 1)
     
-    # Total inventory value (NO NEGATIVE)
-    # FIX #7: Use GREATEST to prevent negative asset values
+    # Total inventory value
     cursor.execute("""
         SELECT SUM(GREATEST(Quantite, 0) * Prix) as inventory_value 
         FROM produit
@@ -1423,27 +1553,10 @@ def get_dashboard_stats():
     cursor.execute("SELECT COUNT(*) as total FROM camion")
     total_vehicles = cursor.fetchone()['total']
     
-    # ADMIN AWARENESS: Unconfirmed orders (should be reviewed and confirmed)
-    cursor.execute("""
-        SELECT COUNT(*) as unconfirmed
-        FROM commande
-        WHERE user_confirmed = FALSE
-    """)
-    unconfirmed_orders = cursor.fetchone()['unconfirmed'] or 0
-    
-    # ADMIN AWARENESS: Unverified plates (should be verified if actually received)
-    cursor.execute("""
-        SELECT COUNT(DISTINCT plaque_vehicule) as unverified
-        FROM commande
-        WHERE plaque_vehicule IS NOT NULL 
-          AND plate_verified = FALSE
-    """)
-    unverified_plates = cursor.fetchone()['unverified'] or 0
-    
     conn.close()
     
     return {
-        # Core metrics (reliable, only count confirmed/verified)
+        # Core metrics
         "total_products": total_products,
         "low_stock_items": low_stock,
         "orders_by_status": orders_by_status,
@@ -1453,10 +1566,7 @@ def get_dashboard_stats():
         "avg_stock": avg_stock,
         "inventory_value": inventory_value,
         "total_clients": total_clients,
-        "total_vehicles": total_vehicles,
-        # Admin awareness metrics (helps identify issues)
-        "unconfirmed_orders": unconfirmed_orders,
-        "unverified_plates": unverified_plates
+        "total_vehicles": total_vehicles
     }
 
 if __name__ == "__main__":
