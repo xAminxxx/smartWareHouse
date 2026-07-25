@@ -2,6 +2,9 @@
 
 > An AI-powered logistics management system that transforms camera images into intelligent warehouse decisions.
 
+> [!IMPORTANT]
+> Never commit API keys or credentials. Copy `.env.example` to `.env` and keep all real values local.
+
 ![Stack](https://img.shields.io/badge/Stack-FastAPI%20%7C%20Next.js%20%7C%20MySQL%20%7C%20Gemini-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
