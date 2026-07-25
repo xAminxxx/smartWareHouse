@@ -6,7 +6,6 @@
 > Never commit API keys or credentials. Copy `.env.example` to `.env` and keep all real values local.
 
 ![Stack](https://img.shields.io/badge/Stack-FastAPI%20%7C%20Next.js%20%7C%20MySQL%20%7C%20Gemini-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
 
 ## 📋 Overview
 
@@ -69,10 +68,11 @@ docker compose up -d db phpmyadmin
 ### 3. Start Backend
 
 ```bash
-# Activate virtual environment
-source /home/med-amin/envs/ml/bin/activate
+# Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# Install dependencies (first time only)
+# Install dependencies
 pip install -r requirements.txt
 
 # Run FastAPI server
@@ -96,20 +96,11 @@ npm run dev
 | API Docs | http://localhost:8000/docs |
 | phpMyAdmin | http://localhost:8080 |
 
-## 👤 Test Credentials
+## 👤 Local accounts
 
-| Role | Email | Password | Notes |
-|------|-------|----------|-------|
-| Admin | admin@smart.com | admin | Hardcoded admin access |
-| Client | client@test.com | client | Sample client account |
-
-**Note:** New registrations through the UI automatically receive `role='client'`. Admin users must be created manually in the database:
-
-```sql
--- Create admin user manually via phpMyAdmin or MySQL CLI
-INSERT INTO user (email, motpass, role) VALUES 
-('admin@smart.com', SHA2('admin', 256), 'admin');
-```
+New registrations through the UI receive the `client` role. Create local
+administrator accounts with a strong, unique password and keep all credentials
+outside the repository.
 
 ## 📁 Project Structure
 
@@ -186,6 +177,3 @@ To update the RAG index:
 python src/rag_engine.py
 ```
 
-## 📝 License
-
-MIT License - see LICENSE file for details.
