@@ -176,4 +176,3 @@ To update the RAG index:
 ```bash
 python src/rag_engine.py
 ```
-
